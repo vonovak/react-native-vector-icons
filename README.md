@@ -98,7 +98,7 @@ To use the bundled icons on iOS, follow these steps:
 
 ### macOS
 
-TBA: It should just work???
+This needs more work, see details in #1624
 
 ### Windows
 
