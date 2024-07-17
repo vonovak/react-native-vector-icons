@@ -36,7 +36,7 @@ Pod::Spec.new do |s|
       echo \"PROJECT_ROOT: $PROJECT_ROOT\"
 
       XCODE_DIR=$(ls -d \"$PODS_CONFIGURATION_BUILD_DIR\"/*.app)
-      DEST_DIR=\"${XCODE_DIR}/react-native-vector-icons\"
+      DEST_DIR=\"${XCODE_DIR}\"
       echo XCODE_DIR: \"$XCODE_DIR\"
       echo DEST_DIR: \"$DEST_DIR\"
       mkdir -p \"$DEST_DIR\"

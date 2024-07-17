@@ -1,10 +1,11 @@
-import React, { forwardRef, type Ref } from 'react';
+import React, {forwardRef, type Ref, useEffect} from 'react';
 
 import { PixelRatio, Platform, Text, type TextProps, type TextStyle, processColor } from 'react-native';
 
 import NativeIconAPI from './NativeVectorIcons';
 import createIconSourceCache from './create-icon-source-cache';
 import ensureNativeModuleAvailable from './ensure-native-module-available';
+import {downloadFontAsync, isDynamicLoadingEnabled, isLoadedNative} from "./dynamicFontLoading";
 
 export const DEFAULT_ICON_SIZE = 12;
 export const DEFAULT_ICON_COLOR = 'black';
@@ -19,7 +20,7 @@ export type IconProps<T> = TextProps & {
 export const createIconSet = <GM extends Record<string, number>>(
   glyphMap: GM,
   fontFamily: string,
-  fontFile: string,
+  {fontFile, fontModuleId}: {fontFile: string; fontModuleId: number},
   fontStyle?: TextProps['style'],
 ) => {
   // Android doesn't care about actual fontFamily name, it will only look in fonts folder.
@@ -52,8 +53,20 @@ export const createIconSet = <GM extends Record<string, number>>(
     innerRef,
     ...props
   }: IconProps<keyof GM>) => {
-    const glyph = name ? resolveGlyph(name as string) : '';
+    const glyph = name ? resolveGlyph(name) : '';
+    const [isFontLoaded, setIsFontLoaded] = React.useState(isDynamicLoadingEnabled() ? isLoadedNative(fontFamily) : true);
 
+    useEffect(() => {
+      if (!isFontLoaded) {
+        downloadFontAsync(fontFamily, fontModuleId).finally(()=>{
+          setIsFontLoaded(true);
+        })
+      }
+    }, []);
+
+    if (!isFontLoaded) {
+      return <Text />
+    }
     const styleDefaults = {
       fontSize: size,
       color,
@@ -168,7 +181,7 @@ export const createIconSet = <GM extends Record<string, number>>(
     await NativeIconAPI.loadFontWithFileName(filename, extension, 'react-native-vector-icons');
   };
 
-  loadFont();
+  // loadFont();
 
   const IconNamespace = Object.assign(WrappedIcon, {
     getImageSource,
