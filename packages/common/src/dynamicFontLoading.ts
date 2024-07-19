@@ -1,3 +1,7 @@
+/*
+* The following imports are always present when react native is installed
+* in the future, more explicit apis will be exposed by the core, including typings
+* */
 // @ts-expect-error missing types
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { getAssetByID } from '@react-native/assets-registry/registry';
@@ -5,33 +9,65 @@ import { getAssetByID } from '@react-native/assets-registry/registry';
 import resolveAssetSource from 'react-native/Libraries/Image/resolveAssetSource';
 import {type Image} from 'react-native';
 
-const loadPromises: { [fontSource: string]: Promise<void> } = {};
-
-let dynamicFontLoadingEnabled = false
-
-// allows dynamic loading of fonts for all icons
-export const setDynamicLoadingEnabled = (value: boolean): boolean => {
-    const canSet = globalThis.expo?.modules?.ExpoAsset && globalThis.expo?.modules?.ExpoFontLoader;
-    if (canSet) {
-        dynamicFontLoadingEnabled = value;
+declare global {
+    interface ExpoGlobal {
+        modules: {
+            ExpoAsset: {
+                downloadAsync: (uri: string, path: string, type: string) => Promise<string>;
+            };
+            ExpoFontLoader: {
+                loadAsync: (fontFamilyAlias: string, fileUri: string) => Promise<void>;
+                loadedFonts: string[];
+            };
+        };
     }
-    return canSet;
+
+    // eslint-disable-next-line vars-on-top
+    var expo: ExpoGlobal | undefined;
 }
 
+const hasNecessaryExpoModules = !!globalThis.expo?.modules?.ExpoAsset
+    && !!globalThis.expo?.modules?.ExpoFontLoader
+    && globalThis.expo!.modules.ExpoFontLoader.hasOwnProperty('loadedFonts');
+
+let dynamicFontLoadingEnabled = hasNecessaryExpoModules
+
+export const isDynamicLoadingSupported = () => hasNecessaryExpoModules;
+
+/**
+ * Set whether dynamic loading of fonts is enabled. Currently, the presence of expo asset and font loader modules is a prerequisite for enabling.
+ * In the future, react native core apis will be used for dynamic font loading.
+ * @param value - whether dynamic loading of fonts is enabled
+ * @returns `true` if dynamic loading of fonts was successfully set. `false` otherwise.
+ * */
+export const setDynamicLoadingEnabled = (value: boolean): boolean => {
+    dynamicFontLoadingEnabled = value;
+    if (!hasNecessaryExpoModules) {
+        // if expo modules are not present, dynamic loading cannot work
+        dynamicFontLoadingEnabled = false;
+    }
+    return dynamicFontLoadingEnabled === value;
+}
+
+/**
+ * Whether dynamic loading of fonts is enabled. Currently, the presence of expo asset and font loader modules is a prerequisite.
+ * In the future, react native core apis will be used for dynamic font loading.
+ * */
 export const isDynamicLoadingEnabled = () => dynamicFontLoadingEnabled
 
-export const downloadFontAsync = async (fontFamily: string, fontModuleId: number) => {
+const loadPromises: { [fontSource: string]: Promise<void> } = {};
+
+export const loadFontAsync = async (fontFamily: string, fontModuleId: number): Promise<void> => {
     if (loadPromises.hasOwnProperty(fontFamily)) {
         return loadPromises[fontFamily];
     }
     loadPromises[fontFamily] = (async () => {
         try {
-            const fontMeta = getLocalFontUrl(fontModuleId);
-            const { uri, type, hash, name } = fontMeta;
-            const localUri = await globalThis.expo.modules.ExpoAsset.downloadAsync(uri, hash, type);
-            await globalThis.expo.modules.ExpoFontLoader.loadAsync(name, localUri);
+            const { uri, type, hash, name } = getLocalFontUrl(fontModuleId, fontFamily);
+            const localUri = await globalThis.expo!.modules.ExpoAsset.downloadAsync(uri, hash, type)
+            await globalThis.expo!.modules.ExpoFontLoader.loadAsync(name, localUri);
         } catch (error) {
-            console.error('Failed to load font', error);
+            console.error(`Failed to load font ${fontFamily}`, error);
         } finally {
             delete loadPromises[fontFamily];
         }
@@ -45,31 +81,27 @@ type AssetRegistryEntry = {
     hash: string;
     type: string; // file extension
 };
-function getLocalFontUrl(fontModuleId: number) {
+
+const getLocalFontUrl = (fontModuleId: number, fontFamily: string) => {
     const assetMeta: AssetRegistryEntry = getAssetByID(fontModuleId);
+    if (!assetMeta) {
+        throw new Error(`no asset found for font family "${fontFamily}", moduleId: ${String(fontModuleId)}`)
+    }
     const resolver: typeof Image.resolveAssetSource = resolveAssetSource
     const assetSource = resolver(fontModuleId)
     return { ...assetMeta, ...assetSource };
 }
 
-// @ts-expect-error missing types
-globalThis.expo.modules.ExpoFontLoader.loadedCache ??= {};
-
-const getCache = (): { [name: string]: boolean } => {
-    // @ts-expect-error missing types
-    return globalThis.expo.modules.ExpoFontLoader.loadedCache;
-};
+const loadedFontsCache:{ [name: string]: boolean } = {};
 
 export const isLoadedNative = (fontFamily: string) => {
-    const loadedCache = getCache();
-    if (fontFamily in loadedCache) {
+    if (fontFamily in loadedFontsCache) {
         return true;
     } else {
-        // @ts-expect-error missing types
-        const loadedNativeFonts: string[] = globalThis.expo.modules.ExpoFontLoader.loadedFonts;
+        const loadedNativeFonts  = globalThis.expo!.modules.ExpoFontLoader.loadedFonts;
         loadedNativeFonts.forEach((font) => {
-            loadedCache[font] = true;
+            loadedFontsCache[font] = true;
         });
-        return fontFamily in loadedCache;
+        return fontFamily in loadedFontsCache;
     }
 };

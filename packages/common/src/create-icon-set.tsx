@@ -5,7 +5,7 @@ import { PixelRatio, Platform, Text, type TextProps, type TextStyle, processColo
 import NativeIconAPI from './NativeVectorIcons';
 import createIconSourceCache from './create-icon-source-cache';
 import ensureNativeModuleAvailable from './ensure-native-module-available';
-import {downloadFontAsync, isDynamicLoadingEnabled, isLoadedNative} from "./dynamicFontLoading";
+import { loadFontAsync, isDynamicLoadingEnabled, isLoadedNative } from "./dynamicFontLoading";
 
 export const DEFAULT_ICON_SIZE = 12;
 export const DEFAULT_ICON_COLOR = 'black';
@@ -53,20 +53,25 @@ export const createIconSet = <GM extends Record<string, number>>(
     innerRef,
     ...props
   }: IconProps<keyof GM>) => {
-    const glyph = name ? resolveGlyph(name) : '';
-    const [isFontLoaded, setIsFontLoaded] = React.useState(isDynamicLoadingEnabled() ? isLoadedNative(fontFamily) : true);
+    const [isFontLoaded, setIsFontLoaded] =
+        React.useState(isDynamicLoadingEnabled() ? isLoadedNative(fontFamily) : true);
+    const glyph = isFontLoaded && name ? resolveGlyph(name) : '';
 
     useEffect(() => {
+      let isMounted = true;
+
       if (!isFontLoaded) {
-        downloadFontAsync(fontFamily, fontModuleId).finally(()=>{
-          setIsFontLoaded(true);
+        loadFontAsync(fontFamily, fontModuleId).finally(()=> {
+          if (isMounted) {
+            setIsFontLoaded(true);
+          }
         })
       }
+      return () => {
+        isMounted = false;
+      };
     }, []);
 
-    if (!isFontLoaded) {
-      return <Text />
-    }
     const styleDefaults = {
       fontSize: size,
       color,
